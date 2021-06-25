@@ -325,7 +325,7 @@ pub fn read_stl(mut reader: impl io::Read + io::Seek) -> Result<RefCellMesh> {
     ))))
 }
 
-pub fn read_dae(string: &str) -> Result<(Vec<RefCellMesh>, Vec<na::Vector3<f32>>)> {
+pub fn read_dae(string: &str) -> Result<(Vec<RefCellMesh>, HashMap<String, na::Vector3<f32>>)> {
     let doc = ColladaDocument::from_str(string)?;
 
     // todo: remove unwrap
@@ -374,11 +374,14 @@ pub fn read_dae(string: &str) -> Result<(Vec<RefCellMesh>, Vec<na::Vector3<f32>>
 
     let colors = get_effect_library(&doc)
         .into_iter()
-        .map(|(_, material)| {
-            na::Vector3::<f32>::new(
-                material.diffuse[0],
-                material.diffuse[1],
-                material.diffuse[2],
+        .map(|(name, material)| {
+            (
+                name,
+                na::Vector3::<f32>::new(
+                    material.diffuse[0],
+                    material.diffuse[1],
+                    material.diffuse[2],
+                ),
             )
         })
         .collect();
