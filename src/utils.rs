@@ -119,6 +119,7 @@ mod wasm {
     pub(crate) enum MeshKind {
         Obj,
         Stl,
+        Dae,
         Other,
     }
 
@@ -192,6 +193,8 @@ mod wasm {
                     MeshKind::Obj
                 } else if input_file.ends_with(".stl") || input_file.ends_with(".STL") {
                     MeshKind::Stl
+                } else if input_file.ends_with(".dae") || input_file.ends_with(".DAE") {
+                    MeshKind::Dae
                 } else {
                     MeshKind::Other
                 };

@@ -2,7 +2,7 @@ use crate::errors::{Error, Result};
 use collada::document::ColladaDocument;
 use k::nalgebra as na;
 use kiss3d::{resource::Mesh, scene::SceneNode};
-use std::{cell::RefCell, io, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, io, rc::Rc};
 use tracing::*;
 
 type RefCellMesh = Rc<RefCell<Mesh>>;
@@ -98,7 +98,7 @@ pub fn load_mesh(
     scale: na::Vector3<f32>,
     opt_color: &Option<na::Point3<f32>>,
     group: &mut SceneNode,
-    _use_texture: bool,
+    use_texture: bool,
 ) -> Result<SceneNode> {
     use std::{
         ffi::OsStr,
@@ -134,11 +134,61 @@ pub fn load_mesh(
         Some("dae" | "DAE") => {
             debug!("load dae: path = {}", filename.display());
             let mut base = group.add_group();
-            let meshes = read_dae(&fs::read_to_string(filename)?)?;
-            for mesh in meshes {
-                let mut scene = base.add_mesh(mesh, scale);
-                if let Some(color) = *opt_color {
-                    scene.set_color(color[0], color[1], color[2]);
+            let (meshes, colors) = read_dae(&fs::read_to_string(filename)?)?;
+            info!("num mesh, colors = {} {}", meshes.len(), colors.len());
+            let mesh_scenes = meshes
+                .into_iter()
+                .map(|mesh| {
+                    let mut scene = base.add_mesh(mesh, scale);
+                    if let Some(color) = *opt_color {
+                        scene.set_color(color[0], color[1], color[2]);
+                    }
+                    scene
+                })
+                .collect::<Vec<_>>();
+            // do not use texture, use only color in urdf file.
+            if !use_texture {
+                return Ok(base);
+            }
+
+            // Size of color and mesh are same, use each color for mesh
+            if mesh_scenes.len() == colors.len() {
+                for (_count, (mut mesh_scene, color)) in
+                    mesh_scenes.into_iter().zip(colors.into_iter()).enumerate()
+                {
+                    mesh_scene.set_color(color[0], color[1], color[2]);
+                    // // Is this OK?
+                    // if count < textures.len() {
+                    //     let mut texture_path = filename.to_path_buf();
+                    //     texture_path.set_file_name(textures[count].clone());
+                    //     debug!("using texture={}", texture_path.display());
+                    //     if texture_path.exists() {
+                    //         mesh_scene.set_texture_from_file(
+                    //             &texture_path,
+                    //             texture_path.to_str().unwrap(),
+                    //         );
+                    //     }
+                    // }
+                }
+            } else {
+                // When size of mesh and color mismatch, use only first color/texture for all meshes.
+                // If no color found, use urdf color instead.
+                for mut mesh_scene in mesh_scenes {
+                    // if !textures.is_empty() {
+                    //     let mut texture_path = filename.to_path_buf();
+                    //     texture_path.set_file_name(textures[0].clone());
+                    //     debug!("texture={}", texture_path.display());
+                    //     if texture_path.exists() {
+                    //         mesh_scene.set_texture_from_file(
+                    //             &texture_path,
+                    //             texture_path.to_str().unwrap(),
+                    //         );
+                    //     }
+                    // }
+                    if !colors.is_empty() {
+                        let color = colors[0];
+                        mesh_scene.set_color(color[0], color[1], color[2]);
+                    }
                 }
             }
             Ok(base)
@@ -186,7 +236,8 @@ pub fn load_mesh(
         MeshKind::Dae => {
             debug!("load dae: path = {}", data.path);
             let mut base = group.add_group();
-            let meshes = read_dae(data.string().unwrap())?;
+            let (meshes, colors) = read_dae(data.string().unwrap())?;
+            info!("num mesh, colors = {} {}", meshes.len(), colors.len());
             for mesh in meshes {
                 let mut scene = base.add_mesh(mesh, scale);
                 if let Some(color) = *opt_color {
@@ -274,7 +325,7 @@ pub fn read_stl(mut reader: impl io::Read + io::Seek) -> Result<RefCellMesh> {
     ))))
 }
 
-pub fn read_dae(string: &str) -> Result<Vec<RefCellMesh>> {
+pub fn read_dae(string: &str) -> Result<(Vec<RefCellMesh>, Vec<na::Vector3<f32>>)> {
     let doc = ColladaDocument::from_str(string)?;
 
     // todo: remove unwrap
@@ -321,5 +372,89 @@ pub fn read_dae(string: &str) -> Result<Vec<RefCellMesh>> {
         })
         .collect();
 
-    Ok(meshes)
+    let colors = get_effect_library(&doc)
+        .into_iter()
+        .map(|(_, material)| {
+            na::Vector3::<f32>::new(
+                material.diffuse[0],
+                material.diffuse[1],
+                material.diffuse[2],
+            )
+        })
+        .collect();
+
+    Ok((meshes, colors))
+}
+
+// Based on ColladaDocument::get_effect_library.
+// ColladaDocument::get_effect_library panics if elements does not exist.
+fn get_effect_library(doc: &ColladaDocument) -> HashMap<String, collada::document::PhongEffect> {
+    macro_rules! tri {
+        ($expr:expr) => {
+            match $expr {
+                Some(v) => v,
+                None => return Default::default(),
+            }
+        };
+    }
+
+    fn parse_string_to_vector<T: std::str::FromStr>(string: &str) -> Vec<T> {
+        string
+            .trim()
+            .split(&[' ', '\n'][..])
+            .map(|s| s.parse().ok().expect("Error parsing array in COLLADA file"))
+            .collect()
+    }
+
+    fn get_color(el: &str) -> Option<[f32; 4]> {
+        let v: Vec<f32> = parse_string_to_vector(el);
+        if v.len() == 4 {
+            Some([v[0], v[1], v[2], v[3]])
+        } else {
+            None
+        }
+    }
+
+    let ns = doc.root_element.ns.as_deref();
+    let lib_effs = tri!(doc.root_element.get_child("library_effects", ns));
+    lib_effs
+        .get_children("effect", ns)
+        .flat_map(|el| -> Option<(String, collada::document::PhongEffect)> {
+            let id = el.get_attribute("id", None)?;
+            let prof = el.get_child("profile_COMMON", ns)?;
+            let tech = prof.get_child("technique", ns)?;
+            let phong = tech.get_child("phong", ns)?;
+            let emission_color = phong.get_child("emission", ns)?.get_child("color", ns)?;
+            let emission = get_color(&emission_color.content_str())?;
+            let ambient_color = phong.get_child("ambient", ns)?.get_child("color", ns)?;
+            let ambient = get_color(&ambient_color.content_str())?;
+            let diffuse_color = phong.get_child("diffuse", ns)?.get_child("color", ns)?;
+            let diffuse = get_color(&diffuse_color.content_str())?;
+            let specular_color = phong.get_child("specular", ns)?.get_child("color", ns)?;
+            let specular = get_color(&specular_color.content_str())?;
+            let shininess: f32 = phong
+                .get_child("shininess", ns)?
+                .get_child("float", ns)?
+                .content_str()
+                .parse()
+                .ok()?;
+            let index_of_refraction: f32 = phong
+                .get_child("index_of_refraction", ns)?
+                .get_child("float", ns)?
+                .content_str()
+                .parse()
+                .ok()?;
+            Some((
+                id.to_string(),
+                collada::document::PhongEffect {
+                    emission,
+                    ambient,
+                    diffuse,
+                    specular,
+                    shininess,
+                    index_of_refraction,
+                },
+            ))
+        })
+        .collect()
 }
