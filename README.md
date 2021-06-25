@@ -15,20 +15,17 @@ If you are using rust-lang already and `cargo` is installed, you can install by 
 cargo install urdf-viz
 ```
 
-If you don't use mesh other than `.obj` and `.stl` files, you can skip install
-of assimp by disabling the `assimp` feature like below.
+If you use mesh other than `.obj`, `.stl`, and `.dae` files, you need to install urdf-viz with the `assimp` feature like below:
 
 ```bash
-cargo build --no-default-features
+cargo install urdf-viz --features assimp
 ```
 
 ### Pre-requirements for build
 
 #### Common
 
-You need [cmake](https://cmake.org/download/) to use assimp (mesh loader).
-It can be skipped if you use `--no-default-features`, but it will make it
-fail to show mesh files other than `.obj` and `.stl`.
+You need [cmake](https://cmake.org/download) if you use `--features assimp`.
 
 #### On Linux
 

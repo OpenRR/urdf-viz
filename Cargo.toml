@@ -16,11 +16,12 @@ resolver = "2"
 members = ["examples/wasm"]
 
 [features]
-default = ["assimp"]
+default = []
 assimp = ["assimp-crate", "assimp-sys"]
 
 # Note: k, kiss3d, serde, urdf-rs, and wasm-bindgen are public dependencies.
 [dependencies]
+collada = "0.13"
 k = "0.25"
 kiss3d = "0.31"
 nom_stl = "0.2"

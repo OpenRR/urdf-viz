@@ -1,4 +1,5 @@
 use crate::errors::{Error, Result};
+use collada::document::ColladaDocument;
 use k::nalgebra as na;
 use kiss3d::{resource::Mesh, scene::SceneNode};
 use std::{cell::RefCell, io, rc::Rc};
@@ -99,7 +100,11 @@ pub fn load_mesh(
     group: &mut SceneNode,
     _use_texture: bool,
 ) -> Result<SceneNode> {
-    use std::{ffi::OsStr, fs::File, path::Path};
+    use std::{
+        ffi::OsStr,
+        fs::{self, File},
+        path::Path,
+    };
 
     let filename = Path::new(filename.as_ref());
 
@@ -123,6 +128,18 @@ pub fn load_mesh(
             let mut base = group.add_mesh(mesh, scale);
             if let Some(color) = *opt_color {
                 base.set_color(color[0], color[1], color[2]);
+            }
+            Ok(base)
+        }
+        Some("dae" | "DAE") => {
+            debug!("load dae: path = {}", filename.display());
+            let mut base = group.add_group();
+            let meshes = read_dae(&fs::read_to_string(filename)?)?;
+            for mesh in meshes {
+                let mut scene = base.add_mesh(mesh, scale);
+                if let Some(color) = *opt_color {
+                    scene.set_color(color[0], color[1], color[2]);
+                }
             }
             Ok(base)
         }
@@ -163,6 +180,18 @@ pub fn load_mesh(
             let mut base = group.add_mesh(mesh, scale);
             if let Some(color) = *opt_color {
                 base.set_color(color[0], color[1], color[2]);
+            }
+            Ok(base)
+        }
+        MeshKind::Dae => {
+            debug!("load dae: path = {}", data.path);
+            let mut base = group.add_group();
+            let meshes = read_dae(data.string().unwrap())?;
+            for mesh in meshes {
+                let mut scene = base.add_mesh(mesh, scale);
+                if let Some(color) = *opt_color {
+                    scene.set_color(color[0], color[1], color[2]);
+                }
             }
             Ok(base)
         }
@@ -243,4 +272,54 @@ pub fn read_stl(mut reader: impl io::Read + io::Seek) -> Result<RefCellMesh> {
     Ok(Rc::new(RefCell::new(kiss3d::resource::Mesh::new(
         vertices, indices, None, None, false,
     ))))
+}
+
+pub fn read_dae(string: &str) -> Result<Vec<RefCellMesh>> {
+    let doc = ColladaDocument::from_str(string)?;
+
+    // todo: remove unwrap
+    let objects = doc.get_obj_set().unwrap();
+
+    let meshes = objects
+        .objects
+        .into_iter()
+        .map(|object| {
+            let vertices = object
+                .vertices
+                .iter()
+                .map(|v| na::Point3::new(v.x as f32, v.y as f32, v.z as f32))
+                .collect();
+
+            let mut indices = vec![];
+            for geometry in &object.geometry {
+                for mesh in &geometry.mesh {
+                    match mesh {
+                        collada::PrimitiveElement::Triangles(triangles) => {
+                            indices.extend(
+                                triangles.vertices.iter().map(|&(x, y, z)| {
+                                    na::Point3::new(x as u16, y as u16, z as u16)
+                                }),
+                            );
+                        }
+                        collada::PrimitiveElement::Polylist(list) => {
+                            // TODO
+                            for &shape in &list.shapes {
+                                if let collada::Shape::Triangle((x, ..), (y, ..), (z, ..)) = shape {
+                                    indices.push(na::Point3::new(x as u16, y as u16, z as u16));
+                                } else {
+                                    debug!("{:?}", shape);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rc::new(RefCell::new(kiss3d::resource::Mesh::new(
+                vertices, indices, None, None, false,
+            )))
+        })
+        .collect();
+
+    Ok(meshes)
 }
