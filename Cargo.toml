@@ -61,3 +61,6 @@ web-sys = { version = "0.3", features = [
     "Response",
     "WebGlRenderingContext",
 ] }
+
+[patch.crates-io]
+collada = { git = "https://github.com/taiki-e/piston_collada.git", branch = "rusty-xml" }
