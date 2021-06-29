@@ -555,9 +555,98 @@ pub fn read_dae(string: &str, use_texture: bool) -> Result<Vec<RefCellMesh>> {
                             }
                         }
                     }
-                    _ => {
-                        debug!("PrimitiveNotTriangles");
-                    } // _ => return Err("PrimitiveNotTriangles".into()),
+                    collada::PrimitiveElement::Polylist(polylist) => {
+                        // TODO
+                        let mut idx = 0u32;
+                        for &shape in &polylist.shapes {
+                            if let collada::Shape::Triangle(
+                                (vertex_idx_x, tx_idx_x, normal_idx_x),
+                                (vertex_idx_y, tx_idx_y, normal_idx_y),
+                                (vertex_idx_z, tx_idx_z, normal_idx_z),
+                            ) = shape
+                            {
+                                // positions.push(na::Point3::new(
+                                //     vertex_idx_x as f32,
+                                //     vertex_idx_y as f32,
+                                //     vertex_idx_z as f32,
+                                // ));
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx_x].x as f32,
+                                    p[vertex_idx_x].y as f32,
+                                    p[vertex_idx_x].z as f32,
+                                ));
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx_y].x as f32,
+                                    p[vertex_idx_y].y as f32,
+                                    p[vertex_idx_y].z as f32,
+                                ));
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx_z].x as f32,
+                                    p[vertex_idx_z].y as f32,
+                                    p[vertex_idx_z].z as f32,
+                                ));
+
+                                if let (
+                                    Some(normal_idx_x),
+                                    Some(normal_idx_y),
+                                    Some(normal_idx_z),
+                                ) = (normal_idx_x, normal_idx_y, normal_idx_z)
+                                {
+                                    // normals.push(na::Vector3::new(
+                                    //     normal_idx_x as f32,
+                                    //     normal_idx_y as f32,
+                                    //     normal_idx_z as f32,
+                                    // ));
+                                    normals.push(na::Vector3::new(
+                                        n[normal_idx_x].x as f32,
+                                        n[normal_idx_x].y as f32,
+                                        n[normal_idx_x].z as f32,
+                                    ));
+                                    normals.push(na::Vector3::new(
+                                        n[normal_idx_y].x as f32,
+                                        n[normal_idx_y].y as f32,
+                                        n[normal_idx_y].z as f32,
+                                    ));
+                                    normals.push(na::Vector3::new(
+                                        n[normal_idx_z].x as f32,
+                                        n[normal_idx_z].y as f32,
+                                        n[normal_idx_z].z as f32,
+                                    ));
+                                }
+
+                                if let (Some(tx_idx_x), Some(tx_idx_y), Some(tx_idx_z)) =
+                                    (tx_idx_x, tx_idx_y, tx_idx_z)
+                                {
+                                    // texcoords.push(na::Point2::new(
+                                    //     tx_idx_x as f32,
+                                    //     tx_idx_y as f32,
+                                    //     tx_idx_z as f32,
+                                    // ));
+                                    texcoords.push(na::Point2::new(
+                                        n[tx_idx_x].x as f32,
+                                        n[tx_idx_x].y as f32,
+                                    ));
+                                    texcoords.push(na::Point2::new(
+                                        n[tx_idx_y].x as f32,
+                                        n[tx_idx_y].y as f32,
+                                    ));
+                                    texcoords.push(na::Point2::new(
+                                        n[tx_idx_z].x as f32,
+                                        n[tx_idx_z].y as f32,
+                                    ));
+                                }
+
+                                indices.push(na::Point3::new(
+                                    idx as u16,
+                                    (idx + 1) as u16,
+                                    (idx + 2) as u16,
+                                ));
+                                idx += 3;
+                            } else {
+                                debug!("PrimitiveNotTriangles {:?}", shape);
+                            }
+                        }
+                    }
                 }
             }
         }
