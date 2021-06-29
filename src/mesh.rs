@@ -450,55 +450,101 @@ pub fn read_dae(string: &str, use_texture: bool) -> Result<Vec<RefCellMesh>> {
                 match primitive {
                     collada::PrimitiveElement::Triangles(triangles) => {
                         let normals_idx = triangles.normals.as_ref().unwrap();
-                        let texcoords_idx = triangles.tex_vertices.as_ref().unwrap();
+                        let texcoords_idx = triangles.tex_vertices.as_ref();
                         let positions_idx = &triangles.vertices;
                         assert_eq!(positions_idx.len(), normals_idx.len());
-                        assert_eq!(positions_idx.len(), texcoords_idx.len());
+                        if let Some(texcoords_idx) = texcoords_idx {
+                            assert_eq!(positions_idx.len(), texcoords_idx.len());
 
-                        let mut idx = 0u16;
-                        for (&vertex_idx, (&normal_idx, &tx_idx)) in positions_idx
-                            .iter()
-                            .zip(normals_idx.iter().zip(texcoords_idx.iter()))
-                        {
-                            positions.push(na::Point3::new(
-                                p[vertex_idx.0].x as f32,
-                                p[vertex_idx.0].y as f32,
-                                p[vertex_idx.0].z as f32,
-                            ));
-                            positions.push(na::Point3::new(
-                                p[vertex_idx.1].x as f32,
-                                p[vertex_idx.1].y as f32,
-                                p[vertex_idx.1].z as f32,
-                            ));
-                            positions.push(na::Point3::new(
-                                p[vertex_idx.2].x as f32,
-                                p[vertex_idx.2].y as f32,
-                                p[vertex_idx.2].z as f32,
-                            ));
-                            normals.push(na::Vector3::new(
-                                n[normal_idx.0].x as f32,
-                                n[normal_idx.0].y as f32,
-                                n[normal_idx.0].z as f32,
-                            ));
-                            normals.push(na::Vector3::new(
-                                n[normal_idx.1].x as f32,
-                                n[normal_idx.1].y as f32,
-                                n[normal_idx.1].z as f32,
-                            ));
-                            normals.push(na::Vector3::new(
-                                n[normal_idx.2].x as f32,
-                                n[normal_idx.2].y as f32,
-                                n[normal_idx.2].z as f32,
-                            ));
-                            texcoords
-                                .push(na::Point2::new(t[tx_idx.0].x as f32, t[tx_idx.0].y as f32));
-                            texcoords
-                                .push(na::Point2::new(t[tx_idx.1].x as f32, t[tx_idx.1].y as f32));
-                            texcoords
-                                .push(na::Point2::new(t[tx_idx.2].x as f32, t[tx_idx.2].y as f32));
+                            let mut idx = 0u16;
+                            for (&vertex_idx, (&normal_idx, &tx_idx)) in positions_idx
+                                .iter()
+                                .zip(normals_idx.iter().zip(texcoords_idx))
+                            {
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx.0].x as f32,
+                                    p[vertex_idx.0].y as f32,
+                                    p[vertex_idx.0].z as f32,
+                                ));
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx.1].x as f32,
+                                    p[vertex_idx.1].y as f32,
+                                    p[vertex_idx.1].z as f32,
+                                ));
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx.2].x as f32,
+                                    p[vertex_idx.2].y as f32,
+                                    p[vertex_idx.2].z as f32,
+                                ));
+                                normals.push(na::Vector3::new(
+                                    n[normal_idx.0].x as f32,
+                                    n[normal_idx.0].y as f32,
+                                    n[normal_idx.0].z as f32,
+                                ));
+                                normals.push(na::Vector3::new(
+                                    n[normal_idx.1].x as f32,
+                                    n[normal_idx.1].y as f32,
+                                    n[normal_idx.1].z as f32,
+                                ));
+                                normals.push(na::Vector3::new(
+                                    n[normal_idx.2].x as f32,
+                                    n[normal_idx.2].y as f32,
+                                    n[normal_idx.2].z as f32,
+                                ));
+                                texcoords.push(na::Point2::new(
+                                    t[tx_idx.0].x as f32,
+                                    t[tx_idx.0].y as f32,
+                                ));
+                                texcoords.push(na::Point2::new(
+                                    t[tx_idx.1].x as f32,
+                                    t[tx_idx.1].y as f32,
+                                ));
+                                texcoords.push(na::Point2::new(
+                                    t[tx_idx.2].x as f32,
+                                    t[tx_idx.2].y as f32,
+                                ));
 
-                            indices.push(na::Point3::new(idx, idx + 1, idx + 2));
-                            idx += 3;
+                                indices.push(na::Point3::new(idx, idx + 1, idx + 2));
+                                idx += 3;
+                            }
+                        } else {
+                            let mut idx = 0u16;
+                            for (&vertex_idx, &normal_idx) in positions_idx.iter().zip(normals_idx)
+                            {
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx.0].x as f32,
+                                    p[vertex_idx.0].y as f32,
+                                    p[vertex_idx.0].z as f32,
+                                ));
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx.1].x as f32,
+                                    p[vertex_idx.1].y as f32,
+                                    p[vertex_idx.1].z as f32,
+                                ));
+                                positions.push(na::Point3::new(
+                                    p[vertex_idx.2].x as f32,
+                                    p[vertex_idx.2].y as f32,
+                                    p[vertex_idx.2].z as f32,
+                                ));
+                                normals.push(na::Vector3::new(
+                                    n[normal_idx.0].x as f32,
+                                    n[normal_idx.0].y as f32,
+                                    n[normal_idx.0].z as f32,
+                                ));
+                                normals.push(na::Vector3::new(
+                                    n[normal_idx.1].x as f32,
+                                    n[normal_idx.1].y as f32,
+                                    n[normal_idx.1].z as f32,
+                                ));
+                                normals.push(na::Vector3::new(
+                                    n[normal_idx.2].x as f32,
+                                    n[normal_idx.2].y as f32,
+                                    n[normal_idx.2].z as f32,
+                                ));
+
+                                indices.push(na::Point3::new(idx, idx + 1, idx + 2));
+                                idx += 3;
+                            }
                         }
                     }
                     _ => {
