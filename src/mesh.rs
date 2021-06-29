@@ -453,10 +453,11 @@ pub fn read_dae(string: &str, use_texture: bool) -> Result<Vec<RefCellMesh>> {
                         let texcoords_idx = triangles.tex_vertices.as_ref();
                         let positions_idx = &triangles.vertices;
                         assert_eq!(positions_idx.len(), normals_idx.len());
+
+                        let mut idx = 0u32;
                         if let Some(texcoords_idx) = texcoords_idx {
                             assert_eq!(positions_idx.len(), texcoords_idx.len());
 
-                            let mut idx = 0u16;
                             for (&vertex_idx, (&normal_idx, &tx_idx)) in positions_idx
                                 .iter()
                                 .zip(normals_idx.iter().zip(texcoords_idx))
@@ -504,11 +505,14 @@ pub fn read_dae(string: &str, use_texture: bool) -> Result<Vec<RefCellMesh>> {
                                     t[tx_idx.2].y as f32,
                                 ));
 
-                                indices.push(na::Point3::new(idx, idx + 1, idx + 2));
+                                indices.push(na::Point3::new(
+                                    idx as u16,
+                                    (idx + 1) as u16,
+                                    (idx + 2) as u16,
+                                ));
                                 idx += 3;
                             }
                         } else {
-                            let mut idx = 0u16;
                             for (&vertex_idx, &normal_idx) in positions_idx.iter().zip(normals_idx)
                             {
                                 positions.push(na::Point3::new(
@@ -542,7 +546,11 @@ pub fn read_dae(string: &str, use_texture: bool) -> Result<Vec<RefCellMesh>> {
                                     n[normal_idx.2].z as f32,
                                 ));
 
-                                indices.push(na::Point3::new(idx, idx + 1, idx + 2));
+                                indices.push(na::Point3::new(
+                                    idx as u16,
+                                    (idx + 1) as u16,
+                                    (idx + 2) as u16,
+                                ));
                                 idx += 3;
                             }
                         }
