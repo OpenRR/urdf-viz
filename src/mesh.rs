@@ -501,7 +501,9 @@ pub fn read_dae(string: &str, use_texture: bool) -> Result<Vec<RefCellMesh>> {
                             idx += 3;
                         }
                     }
-                    _ => return Err("PrimitiveNotTriangles".into()),
+                    _ => {
+                        debug!("PrimitiveNotTriangles");
+                    } // _ => return Err("PrimitiveNotTriangles".into()),
                 }
             }
         }
