@@ -2,7 +2,7 @@ use crate::errors::{Error, Result};
 use collada::document::ColladaDocument;
 use k::nalgebra as na;
 use kiss3d::{resource::Mesh, scene::SceneNode};
-use std::{cell::RefCell, collections::HashMap, io, rc::Rc};
+use std::{cell::RefCell, io, rc::Rc};
 use tracing::*;
 
 type RefCellMesh = Rc<RefCell<Mesh>>;
@@ -134,61 +134,12 @@ pub fn load_mesh(
         Some("dae" | "DAE") => {
             debug!("load dae: path = {}", filename.display());
             let mut base = group.add_group();
-            let (meshes, colors) = read_dae(&fs::read_to_string(filename)?)?;
-            info!("num mesh, colors = {} {}", meshes.len(), colors.len());
-            let mesh_scenes = meshes
-                .into_iter()
-                .map(|mesh| {
-                    let mut scene = base.add_mesh(mesh, scale);
-                    if let Some(color) = *opt_color {
-                        scene.set_color(color[0], color[1], color[2]);
-                    }
-                    scene
-                })
-                .collect::<Vec<_>>();
-            // do not use texture, use only color in urdf file.
-            if !use_texture {
-                return Ok(base);
-            }
-
-            // Size of color and mesh are same, use each color for mesh
-            if mesh_scenes.len() == colors.len() {
-                for (_count, (mut mesh_scene, color)) in
-                    mesh_scenes.into_iter().zip(colors.into_iter()).enumerate()
-                {
-                    mesh_scene.set_color(color[0], color[1], color[2]);
-                    // // Is this OK?
-                    // if count < textures.len() {
-                    //     let mut texture_path = filename.to_path_buf();
-                    //     texture_path.set_file_name(textures[count].clone());
-                    //     debug!("using texture={}", texture_path.display());
-                    //     if texture_path.exists() {
-                    //         mesh_scene.set_texture_from_file(
-                    //             &texture_path,
-                    //             texture_path.to_str().unwrap(),
-                    //         );
-                    //     }
-                    // }
-                }
-            } else {
-                // When size of mesh and color mismatch, use only first color/texture for all meshes.
-                // If no color found, use urdf color instead.
-                for mut mesh_scene in mesh_scenes {
-                    // if !textures.is_empty() {
-                    //     let mut texture_path = filename.to_path_buf();
-                    //     texture_path.set_file_name(textures[0].clone());
-                    //     debug!("texture={}", texture_path.display());
-                    //     if texture_path.exists() {
-                    //         mesh_scene.set_texture_from_file(
-                    //             &texture_path,
-                    //             texture_path.to_str().unwrap(),
-                    //         );
-                    //     }
-                    // }
-                    if !colors.is_empty() {
-                        let color = colors[0];
-                        mesh_scene.set_color(color[0], color[1], color[2]);
-                    }
+            let meshes = read_dae(&fs::read_to_string(filename)?, use_texture)?;
+            info!("num mesh = {}", meshes.len());
+            for mesh in meshes {
+                let mut scene = base.add_mesh(mesh, scale);
+                if let Some(color) = *opt_color {
+                    scene.set_color(color[0], color[1], color[2]);
                 }
             }
             Ok(base)
@@ -209,7 +160,7 @@ pub fn load_mesh(
     scale: na::Vector3<f32>,
     opt_color: &Option<na::Point3<f32>>,
     group: &mut SceneNode,
-    _use_texture: bool,
+    use_texture: bool,
 ) -> Result<SceneNode> {
     use crate::utils::MeshKind;
 
@@ -236,8 +187,8 @@ pub fn load_mesh(
         MeshKind::Dae => {
             debug!("load dae: path = {}", data.path);
             let mut base = group.add_group();
-            let (meshes, colors) = read_dae(data.string().unwrap())?;
-            info!("num mesh, colors = {} {}", meshes.len(), colors.len());
+            let meshes = read_dae(data.string().unwrap(), use_texture)?;
+            info!("num mesh = {}", meshes.len());
             for mesh in meshes {
                 let mut scene = base.add_mesh(mesh, scale);
                 if let Some(color) = *opt_color {
@@ -325,15 +276,25 @@ pub fn read_stl(mut reader: impl io::Read + io::Seek) -> Result<RefCellMesh> {
     ))))
 }
 
+/*
+#[allow(clippy::type_complexity)]
 pub fn read_dae(string: &str) -> Result<(Vec<RefCellMesh>, HashMap<String, na::Vector3<f32>>)> {
     let doc = ColladaDocument::from_str(string)?;
+
+    // let ns = doc.root_element.ns.as_deref();
+    // let material_to_effect = doc
+    //     .root_element
+    //     .get_child("library_materials", ns)
+    //     .map(|_| doc.get_material_to_effect())
+    //     .unwrap_or_default();
+    // let effects = get_effect_library(&doc);
 
     // todo: remove unwrap
     let objects = doc.get_obj_set().unwrap();
 
     let meshes = objects
         .objects
-        .into_iter()
+        .iter()
         .map(|object| {
             let vertices = object
                 .vertices
@@ -342,6 +303,7 @@ pub fn read_dae(string: &str) -> Result<(Vec<RefCellMesh>, HashMap<String, na::V
                 .collect();
 
             let mut indices = vec![];
+            let mut materials = vec![];
             for geometry in &object.geometry {
                 for mesh in &geometry.mesh {
                     match mesh {
@@ -351,16 +313,18 @@ pub fn read_dae(string: &str) -> Result<(Vec<RefCellMesh>, HashMap<String, na::V
                                     na::Point3::new(x as u16, y as u16, z as u16)
                                 }),
                             );
+                            materials.extend(triangles.material.as_ref());
                         }
-                        collada::PrimitiveElement::Polylist(list) => {
+                        collada::PrimitiveElement::Polylist(polylist) => {
                             // TODO
-                            for &shape in &list.shapes {
+                            for &shape in &polylist.shapes {
                                 if let collada::Shape::Triangle((x, ..), (y, ..), (z, ..)) = shape {
                                     indices.push(na::Point3::new(x as u16, y as u16, z as u16));
                                 } else {
                                     debug!("{:?}", shape);
                                 }
                             }
+                            materials.extend(polylist.material.as_ref());
                         }
                     }
                 }
@@ -460,4 +424,96 @@ fn get_effect_library(doc: &ColladaDocument) -> HashMap<String, collada::documen
             ))
         })
         .collect()
+}
+*/
+
+pub fn read_dae(string: &str, use_texture: bool) -> Result<Vec<RefCellMesh>> {
+    let doc = ColladaDocument::from_str(string)?;
+    let obj_set = doc.get_obj_set().ok_or("NoObjSet")?;
+    if obj_set.objects.is_empty() {
+        return Err("EmptyFile".into());
+    }
+
+    let mut meshes = vec![];
+    for object in obj_set.objects {
+        let p = &object.vertices;
+        let n = &object.normals;
+        let t = &object.tex_vertices;
+
+        let mut positions = vec![];
+        let mut normals = vec![];
+        let mut texcoords = vec![];
+        let mut indices = vec![];
+
+        for geometry in &object.geometry {
+            for primitive in &geometry.mesh {
+                match primitive {
+                    collada::PrimitiveElement::Triangles(triangles) => {
+                        let normals_idx = triangles.normals.as_ref().unwrap();
+                        let texcoords_idx = triangles.tex_vertices.as_ref().unwrap();
+                        let positions_idx = &triangles.vertices;
+                        assert_eq!(positions_idx.len(), normals_idx.len());
+                        assert_eq!(positions_idx.len(), texcoords_idx.len());
+
+                        let mut idx = 0u16;
+                        for (&vertex_idx, (&normal_idx, &tx_idx)) in positions_idx
+                            .iter()
+                            .zip(normals_idx.iter().zip(texcoords_idx.iter()))
+                        {
+                            positions.push(na::Point3::new(
+                                p[vertex_idx.0].x as f32,
+                                p[vertex_idx.0].y as f32,
+                                p[vertex_idx.0].z as f32,
+                            ));
+                            positions.push(na::Point3::new(
+                                p[vertex_idx.1].x as f32,
+                                p[vertex_idx.1].y as f32,
+                                p[vertex_idx.1].z as f32,
+                            ));
+                            positions.push(na::Point3::new(
+                                p[vertex_idx.2].x as f32,
+                                p[vertex_idx.2].y as f32,
+                                p[vertex_idx.2].z as f32,
+                            ));
+                            normals.push(na::Vector3::new(
+                                n[normal_idx.0].x as f32,
+                                n[normal_idx.0].y as f32,
+                                n[normal_idx.0].z as f32,
+                            ));
+                            normals.push(na::Vector3::new(
+                                n[normal_idx.1].x as f32,
+                                n[normal_idx.1].y as f32,
+                                n[normal_idx.1].z as f32,
+                            ));
+                            normals.push(na::Vector3::new(
+                                n[normal_idx.2].x as f32,
+                                n[normal_idx.2].y as f32,
+                                n[normal_idx.2].z as f32,
+                            ));
+                            texcoords
+                                .push(na::Point2::new(t[tx_idx.0].x as f32, t[tx_idx.0].y as f32));
+                            texcoords
+                                .push(na::Point2::new(t[tx_idx.1].x as f32, t[tx_idx.1].y as f32));
+                            texcoords
+                                .push(na::Point2::new(t[tx_idx.2].x as f32, t[tx_idx.2].y as f32));
+
+                            indices.push(na::Point3::new(idx, idx + 1, idx + 2));
+                            idx += 3;
+                        }
+                    }
+                    _ => return Err("PrimitiveNotTriangles".into()),
+                }
+            }
+        }
+
+        meshes.push(Rc::new(RefCell::new(kiss3d::resource::Mesh::new(
+            positions,
+            indices,
+            None,
+            if use_texture { Some(texcoords) } else { None },
+            false,
+        ))));
+    }
+
+    Ok(meshes)
 }
